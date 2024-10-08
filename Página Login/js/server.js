@@ -37,15 +37,25 @@ app.post("/login", (req, res) => {
 });
 
 app.post("/register", async (req, res) => {
-  const hashedPassword = await bcrypt.hash(password, 10);
-
   const { email, password } = req.body;
+  const hashedPassword = await bcrypt.hash(password, 10);
   db.query(
-    "INSERT INTO users (email, password) VALUES (?, ?)",
-    [email, password],
+    "SELECT email FROM users WHERE email = ?",
+    [email],
     (err, result) => {
       if (err) throw err;
-      res.sendStatus(201); // Usuário registrado com sucesso
+      if (result.length > 0) {
+        return res.status(400).send("Usuário Já existe");
+      }
+    }
+  );
+  db.query(
+    "INSERT INTO users (email, password) VALUES (?, ?)",
+    [email, hashedPassword],
+    (err, result) => {
+      if (err) throw err;
+
+      res.send("Usuário Registrado com sucesso"); // Usuário registrado com sucesso
     }
   );
 });

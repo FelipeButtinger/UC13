@@ -1,5 +1,3 @@
-const bcrypt = require("bcrypt");
-
 document
   .getElementById("registerForm")
   .addEventListener("submit", async (e) => {
