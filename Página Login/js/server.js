@@ -3,8 +3,11 @@ const bodyParser = require("body-parser");
 const mysql = require("mysql2");
 const app = express();
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 app.use(bodyParser.json());
+
+const SECRET_KEY = "shh";
 
 app.use(
   cors(/*{
@@ -20,17 +23,18 @@ const db = mysql.createConnection({
   database: "login",
 });
 
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   db.query(
     "SELECT * FROM users WHERE email = ? AND password = ?",
-    [email, password],
-    (err, results) => {
+    [email],
+    async (err, results) => {
       if (err) throw err;
-      if (results.length > 0) {
-        res.sendStatus(200); // Login bem-sucedido
-      } else {
-        res.status(401).send("Credenciais inválidas");
+      if (
+        result.length === 0 ||
+        !(await bcrypt.compare(password, result[0].password))
+      ) {
+        return res.status(400).send("Credenciais inválidas");
       }
     }
   );
