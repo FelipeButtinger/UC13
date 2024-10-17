@@ -8,7 +8,18 @@ const bcrypt = require("bcrypt");
 app.use(bodyParser.json());
 
 const SECRET_KEY = "shh";
+const authenticateToken = (req, res, next) => {
+  const token =
+    req.headers["authorization"] && req.headers["authorization"].split("")[1];
 
+  if (!token) return res.sendStatus(401);
+
+  jwt.verify(token, SECRET_KEY, (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+};
 app.use(
   cors(/*{
     origin: "http://localhost",
@@ -26,9 +37,9 @@ const db = mysql.createConnection({
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   db.query(
-    "SELECT * FROM users WHERE email = ? AND password = ?",
+    "SELECT * FROM users WHERE email = ?",
     [email],
-    async (err, results) => {
+    async (err, result) => {
       if (err) throw err;
       if (
         result.length === 0 ||
@@ -36,6 +47,9 @@ app.post("/login", async (req, res) => {
       ) {
         return res.status(400).send("Credenciais inválidas");
       }
+      const token = jwt.sign({ email }, SECRET_KEY, { expiresIn: "1h" });
+
+      res.json({ token });
     }
   );
 });
@@ -60,6 +74,53 @@ app.post("/register", async (req, res) => {
       if (err) throw err;
 
       res.send("Usuário Registrado com sucesso"); // Usuário registrado com sucesso
+    }
+  );
+});
+app.get("/user", authenticateToken, (req, res) => {
+  db.query(
+    "SELECT email FROM users WHERE email = ?",
+    [req.user.email],
+    (err, result) => {
+      if (err) throw err;
+
+      if (result.lenght === 0) {
+        return res.status(404).send("Usuário não encontrado");
+      }
+      res.json(result[0]);
+    }
+  );
+});
+
+app.put("/user", authenticateToken, async (req, res) => {
+  const { newEmail, newPassword } = req.body;
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  db.query(
+    "UPDATE users SET email = ?, password = ? WHERE email = ?",
+    [newEmail, hashedPassword, req.user.email],
+    (err, result) => {
+      if (err) throw err;
+
+      if (result.affectedRows === 0) {
+        return res.status(404).send("Usuário não encontrado");
+      }
+      res.send("Usuário atualizado com sucesso");
+    }
+  );
+});
+
+app.delete("/user", authenticateToken, (req, res) => {
+  db.query(
+    "DELETE FROM users WHERE email = ?",
+    [req.user.email],
+    (err, result) => {
+      if (err) throw err;
+
+      if (result.affectedRows === 0) {
+        return res.status(404).send("Usuário não encontrado");
+      }
+      res.send("Usuário deletado com sucesso");
     }
   );
 });

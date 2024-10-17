@@ -8,15 +8,18 @@
   </head>
   <body>
     <main>
-      <input type="text" id="email" />
-
-      <input type="text" id="password" />
-
-      <div id="buttons">
-        <button id="update">UPDATE</button>
-        <button id="delete">DELETE</button>
+      <div class="container">
+        <h2>Bem-vindo, <span id="userEmail"></span></h2>
+        <form id="updateForm">
+          <label for="newEmail">Novo Email:</label>
+          <input type="email" id="newEmail" name="newEmail" />
+          <label for="newPassword">Nova Senha:</label>
+          <input type="password" id="newPassword" name="newPassword" />
+          <button type="submit">Atualizar</button>
+        </form>
+        <button id="deleteUser">Deletar Conta</button>
+        <div id="message"></div>
       </div>
-      <a href="../html/index.html">Retornar ao Login</a>
     </main>
   </body>
 </html>
