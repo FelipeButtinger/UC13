@@ -1,156 +1,145 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const mysql = require('mysql2');
-const cors = require('cors');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs'); 
+const express = require("express");
+const bodyParser = require("body-parser");
+const mysql = require("mysql2");
+const cors = require("cors");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 const app = express();
-const SECRET_KEY = 'seu_segredo_aqui'; // Troque para um segredo seguro
-
-app.use(cors());
 app.use(bodyParser.json());
 
-// Configurando conexão com o MySQL
+// Conexão com o banco de dados
 const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root', // Ajuste o nome de usuário se necessário
-  password: '', // Insira a senha se houver
-  database: 'login'
+  host: "localhost",
+  user: "root",
+  password: "",
+  database: "login",
 });
 
-db.connect((err) => {
-  if (err) throw err;
-  console.log('Conectado ao banco de dados MySQL!');
-});
+// Habilitando CORS
+app.use(cors());
 
-// Registro de usuários
-app.post('/register', async (req, res) => {
+// Segredo para assinar o token
+const JWT_SECRET = "seu_segredo_aqui";
+
+// Rota de login
+app.post("/login", async (req, res) => {
   const { email, password } = req.body;
-  const hashedPassword = await bcrypt.hash(password, 10); // Criptografa a senha
 
-  db.query('SELECT email FROM users WHERE email = ?', [email], (err, result) => {
-    if (err) throw err;
-    if (result.length > 0) {
-      return res.status(400).send('Usuário já existe');
-    }
-
-    db.query('INSERT INTO users (email, password) VALUES (?, ?)', [email, hashedPassword], (err, result) => {
+  db.query(
+    "SELECT * FROM users WHERE email = ?",
+    [email],
+    async (err, results) => {
       if (err) throw err;
-      res.send('Usuário registrado com sucesso');
-    });
-  });
-});
 
-// Login de usuários
-app.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+      // Verifica se o usuário existe e se a senha está correta
+      if (
+        results.length === 0 ||
+        !(await bcrypt.compare(password, results[0].password))
+      ) {
+        return res.status(400).send("Email ou senha inválidos!");
+      }
 
-  db.query('SELECT * FROM users WHERE email = ?', [email], async (err, result) => {
-    if (err) throw err;
+      // Gera o token JWT
+      const token = jwt.sign(
+        { id: results[0].id, email: results[0].email },
+        JWT_SECRET,
+        { expiresIn: "1h" }
+      );
 
-    
-    if (result.length === 0 || !(await bcrypt.compare(password, result[0].password))) {
-      return res.status(400).send('Email ou senha inválidos');
+      // Retorna o token ao cliente
+      res.json({ token });
     }
-
-    //os parametros são os dados que serão inseridos no token, o segredo que você criou e a definição de quando o token vai expirar
-    const token = jwt.sign({ email }, SECRET_KEY, { expiresIn: '1h' }); // Gera o token
-    res.json({ token }); // Retorna o token ao cliente/navegador
-  });
+  );
 });
 
-
-
-
-
-
-
-// Middleware para verificar o token JWT
+// Middleware para autenticação de token
 const authenticateToken = (req, res, next) => {
-  const token = req.headers['authorization'] && req.headers['authorization'].split(' ')[1]; // Extrai o token do cabeçalho 'Authorization'. O cabeçalho Authorization é uma parte do protocolo HTTP que permite que um cliente envie credenciais de autenticação para o servidor.
+  const token =
+    req.headers["authorization"] && req.headres["authorization"].split(" ")[1];
 
-  if (!token) return res.sendStatus(401); // Se não houver token, retorna 401 (não autorizado)
+  if (!token) return res.sendStatus(401);
 
-  jwt.verify(token, SECRET_KEY, (err, user) => {
-    if (err) return res.sendStatus(403); // Se o token for inválido ou expirado, retorna 403 (proibido)
-    req.user = user; // Se o token for válido, armazena os dados do usuário no 'req'
-    next(); // Continua para a próxima função
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
   });
 };
 
+// alterar
+app.put("./user", authenticateToken, async (req, res) => {
+  const { newEmail, newPassoword } = req.body;
+  const hashedPassword = await bcrypt.hash(newPassoword, 10);
 
-
-
-
-
-
-
-
-
-
-
-
-// Rota para obter dados do usuário logado
-/*Rota /user: Esta rota só pode ser acessada se o token JWT for válido.
-O middleware authenticateToken é executado antes da rota. Se o token for válido, a função da rota continua e retorna os dados do usuário.
-*/
-app.get('/user', authenticateToken, (req, res) => {
-  db.query('SELECT email FROM users WHERE email = ?', [req.user.email], (err, result) => {
-    if (err) throw err;
-
-    if (result.length === 0) {
-      return res.status(404).send('Usuário não encontrado');
+  db.query(
+    "UPDATE users SET email = ?, password = ? WHERE email = ?",
+    [newEmail, hashedPassword, req.user.email],
+    (err, result) => {
+      if (err) throw err;
+      if (result.affectedRows === 0) {
+        return res.status(404).send("Usuário nao encontrado");
+      }
+      res.send("Usuario atualizado com sucesso");
     }
+  );
+});
 
-    res.json(result[0]); // Retorna os dados do usuário
+// excluir
+app.delete("./user", authenticateToken, (req, res) => {
+  db.query(
+    "DELETE FROM users WHERE email = ?",
+    [req.user.email],
+    (err, result) => {
+      if (err) throw err;
+      if (result.affectedRows === 0) {
+        return res.status(404).send("Usuario nao encontrado");
+      }
+      res.send("Usuario deletado com sucesso");
+    }
+  );
+});
+
+// Rota para obter informações do usuário
+app.get("/user", authenticateToken, (req, res) => {
+  const userId = req.user.id;
+
+  db.query("SELECT email FROM users WHERE id = ?", [userId], (err, result) => {
+    if (err) throw err;
+    if (result.length > 0) {
+      res.json(result[0]);
+    } else {
+      res.status(404).send("Usuário não encontrado");
+    }
   });
 });
 
+// Rota para registro de usuários
+app.post("/register", async (req, res) => {
+  const { email, password } = req.body;
+  const hashedPassword = await bcrypt.hash(password, 10);
 
+  db.query(
+    "SELECT email FROM users WHERE email = ?",
+    [email],
+    (err, result) => {
+      if (err) throw err;
+      if (result.length > 0) {
+        return res.status(400).send("Usuário já existe!");
+      }
 
-
-
-
-// Rota para atualizar informações do usuário
-app.put('/user', authenticateToken, async (req, res) => {
-  const { newEmail, newPassword } = req.body;  // Extrai o novo e-mail e a nova senha do corpo da requisição
-  const hashedPassword = await bcrypt.hash(newPassword, 10); // Criptografa a nova senha
-
-  db.query('UPDATE users SET email = ?, password = ? WHERE email = ?', [newEmail, hashedPassword, req.user.email], (err, result) => {
-    if (err) throw err;
-
-    // Verifica se nenhuma linha foi afetada pela consulta (ou seja, usuário não encontrado)
-    if (result.affectedRows === 0) {
-      return res.status(404).send('Usuário não encontrado');
+      db.query(
+        "INSERT INTO users (email, password) VALUES (?, ?)",
+        [email, hashedPassword],
+        (err, result) => {
+          if (err) throw err;
+          res.sendStatus(201); // Usuário registrado com sucesso
+        }
+      );
     }
-
-    res.send('Usuário atualizado com sucesso');
-  });
+  );
 });
-
-
-
-
-
-
-// Rota para deletar o usuário
-app.delete('/user', authenticateToken, (req, res) => {
-  db.query('DELETE FROM users WHERE email = ?', [req.user.email], (err, result) => {
-    if (err) throw err;
-
-    if (result.affectedRows === 0) {
-      return res.status(404).send('Usuário não encontrado');
-    }
-
-    res.send('Usuário deletado com sucesso');
-  });
-});
-
-
-
-
 
 app.listen(3000, () => {
-  console.log('Servidor rodando na porta 3000');
+  console.log("Servidor rodando na porta 3000");
 });
